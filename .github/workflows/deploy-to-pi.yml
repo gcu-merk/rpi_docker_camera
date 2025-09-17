@@ -5,13 +5,6 @@ on:
     branches: [ main ]
 
 env:
-name: Build and deploy to Raspberry Pi
-
-on:
-  push:
-    branches: [ main ]
-
-env:
   DOCKER_IMAGE: gcumerk/rpi_docker_camera
 
 jobs:
@@ -79,25 +72,6 @@ jobs:
               --restart unless-stopped \
               $DOCKER_IMAGE:latest
           SSH
-        with:
-          context: .
-          platforms: linux/arm64
-          push: true
-          tags: ${{ env.DOCKER_IMAGE }}:latest
-
-      - name: Prepare SSH key
-        env:
-          DEPLOY_KEY: ${{ secrets.PI_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          printf "%s\n" "$DEPLOY_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-      - name: Pull image on Pi
-        env:
-          DEPLOY_HOST: ${{ secrets.PI_HOST }}
-          DEPLOY_USER: merk
-        run: |
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST \
             "docker pull $DOCKER_IMAGE:latest || true"
 
