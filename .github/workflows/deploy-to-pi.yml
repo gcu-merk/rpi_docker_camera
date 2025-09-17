@@ -1,0 +1,126 @@
+name: Build and deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+name: Build and deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  DOCKER_IMAGE: gcumerk/rpi_docker_camera
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image (arm64)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.DOCKER_IMAGE }}:latest
+
+      - name: Prepare SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s\n" "$DEPLOY_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Pull image on Pi
+        env:
+          DEPLOY_HOST: ${{ secrets.PI_HOST }}
+          DEPLOY_USER: merk
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST \
+            "docker pull $DOCKER_IMAGE:latest || true"
+
+      - name: Run container on Pi
+        env:
+          DEPLOY_HOST: ${{ secrets.PI_HOST }}
+          DEPLOY_USER: merk
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST <<'SSH'
+            set -e
+            # Ensure Redis is running locally in a container
+            docker run -d --name rpi_redis --restart unless-stopped redis:7-alpine || true
+            # Stop and remove existing camera container if present
+            docker rm -f rpi_docker_camera || true
+            # Run the camera container
+            docker run -d --name rpi_docker_camera \
+              --privileged \
+              --device /dev/vchiq:/dev/vchiq \
+              -v /mnt/storage/camera_capture/rpi_docker_camera:/captures \
+              -e REDIS_HOST=127.0.0.1 \
+              -e HOST_OUTPUT_PATH=/mnt/storage/camera_capture/rpi_docker_camera \
+              -e MAX_SAVED=10 \
+              --restart unless-stopped \
+              $DOCKER_IMAGE:latest
+          SSH
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.DOCKER_IMAGE }}:latest
+
+      - name: Prepare SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s\n" "$DEPLOY_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Pull image on Pi
+        env:
+          DEPLOY_HOST: ${{ secrets.PI_HOST }}
+          DEPLOY_USER: merk
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST \
+            "docker pull $DOCKER_IMAGE:latest || true"
+
+      - name: Run container on Pi
+        env:
+          DEPLOY_HOST: ${{ secrets.PI_HOST }}
+          DEPLOY_USER: merk
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST <<'SSH'
+            set -e
+            # Ensure Redis is running locally in a container
+            docker run -d --name rpi_redis --restart unless-stopped redis:7-alpine || true
+            # Stop and remove existing camera container if present
+            docker rm -f rpi_docker_camera || true
+            # Run the camera container
+            docker run -d --name rpi_docker_camera \
+              --privileged \
+              --device /dev/vchiq:/dev/vchiq \
+              -v /mnt/storage/camera_capture/rpi_docker_camera:/captures \
+              -e REDIS_HOST=127.0.0.1 \
+              -e HOST_OUTPUT_PATH=/mnt/storage/camera_capture/rpi_docker_camera \
+              -e MAX_SAVED=10 \
+              --restart unless-stopped \
+              $DOCKER_IMAGE:latest
+          SSH
+          PI_USER: merk

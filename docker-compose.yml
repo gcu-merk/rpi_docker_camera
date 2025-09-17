@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  camera:
+    build: .
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/vchiq:/dev/vchiq
+    environment:
+      - OUTPUT_DIR=/captures
+      - CAPTURE_CMD=libcamera-jpeg -o {path} -n
+      - CAPTURE_INTERVAL=5
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_KEY=camera:latest
+      - HOST_OUTPUT_PATH=/mnt/storage/camera_capture/rpi_docker_camera
+      - MAX_SAVED=10
+    volumes:
+      - /mnt/storage/camera_capture/rpi_docker_camera:/captures
+    depends_on:
+      - redis
