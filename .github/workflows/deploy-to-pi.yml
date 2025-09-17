@@ -10,6 +10,10 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_USER: merk
+      DEPLOY_HOST: ${{ secrets.PI_HOST }}
+      DEPLOY_KEY: ${{ secrets.PI_SSH_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,7 +25,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Log in to Docker Hub
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: Build and push image (arm64)
         uses: docker/build-push-action@v4
@@ -32,25 +36,17 @@ jobs:
           tags: ${{ env.DOCKER_IMAGE }}:latest
 
       - name: Prepare SSH key
-        env:
-          DEPLOY_KEY: ${{ secrets.PI_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
           printf "%s\n" "$DEPLOY_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
       - name: Pull image on Pi
-        env:
-          DEPLOY_HOST: ${{ secrets.PI_HOST }}
-          DEPLOY_USER: merk
         run: |
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST \
             "docker pull $DOCKER_IMAGE:latest || true"
 
       - name: Run container on Pi
-        env:
-          DEPLOY_HOST: ${{ secrets.PI_HOST }}
-          DEPLOY_USER: merk
         run: |
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST <<'SSH'
             set -e
@@ -69,29 +65,3 @@ jobs:
               --restart unless-stopped \
               $DOCKER_IMAGE:latest
           SSH
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST \
-            "docker pull $DOCKER_IMAGE:latest || true"
-
-      - name: Run container on Pi
-        env:
-          DEPLOY_HOST: ${{ secrets.PI_HOST }}
-          DEPLOY_USER: merk
-        run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST <<'SSH'
-            set -e
-            # Ensure Redis is running locally in a container
-            docker run -d --name rpi_redis --restart unless-stopped redis:7-alpine || true
-            # Stop and remove existing camera container if present
-            docker rm -f rpi_docker_camera || true
-            # Run the camera container
-            docker run -d --name rpi_docker_camera \
-              --privileged \
-              --device /dev/vchiq:/dev/vchiq \
-              -v /mnt/storage/camera_capture/rpi_docker_camera:/captures \
-              -e REDIS_HOST=127.0.0.1 \
-              -e HOST_OUTPUT_PATH=/mnt/storage/camera_capture/rpi_docker_camera \
-              -e MAX_SAVED=10 \
-              --restart unless-stopped \
-              $DOCKER_IMAGE:latest
-          SSH
-          PI_USER: merk
